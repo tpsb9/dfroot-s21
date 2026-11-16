@@ -31,10 +31,14 @@ public class MainActivity extends AppCompatActivity implements IReporter {
     // KURAL bekcisi: load sadece pencere acikken (panic/Odin korumasi).
     public static volatile boolean foreground = false;
     private PowerManager.WakeLock mBootWl;
+    private ConsoleFileLogger mConsoleLogger;
 
     @Override
     public void report(String msg) {
         Log.i(TAG, msg.trim());
+        if (mConsoleLogger != null) {
+            mConsoleLogger.writeImmediate(msg);
+        }
         mMain.post(() -> {
             binding.outputView.append(msg);
             binding.outputScroll.post(() -> binding.outputScroll.fullScroll(View.FOCUS_DOWN));
@@ -59,12 +63,16 @@ public class MainActivity extends AppCompatActivity implements IReporter {
             try { mBootWl.release(); } catch (Exception ignored) {}
             mBootWl = null;
         }
+        if (mConsoleLogger != null) {
+            mConsoleLogger.close();
+        }
         super.onDestroy();
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mConsoleLogger = new ConsoleFileLogger(this);
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
@@ -90,6 +98,7 @@ public class MainActivity extends AppCompatActivity implements IReporter {
         binding.btnRun.setEnabled(true);
 
         binding.btnRun.setOnClickListener(v -> {
+            mConsoleLogger.startSession("Launch Root");
             binding.btnRun.setEnabled(false);
             binding.outputView.setText("");
             boolean softReboot = binding.switchManualSoftReboot.isChecked();
@@ -97,6 +106,7 @@ public class MainActivity extends AppCompatActivity implements IReporter {
         });
 
         binding.btnKsu.setOnClickListener(v -> {
+            mConsoleLogger.startSession("Load KernelSU");
             binding.btnKsu.setEnabled(false);
             mCmd.execute(() -> {
                 try {
@@ -112,6 +122,7 @@ public class MainActivity extends AppCompatActivity implements IReporter {
         binding.btnShell.setOnClickListener(v -> {
             String cmd = binding.shellInput.getText().toString().trim();
             if (cmd.isEmpty()) return;
+            mConsoleLogger.startSession("Run as root [" + cmd + "]");
             mCmd.execute(() -> ExploitRunner.sudShell(this, cmd));
         });
 
@@ -157,6 +168,7 @@ public class MainActivity extends AppCompatActivity implements IReporter {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             mBootWl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dfroot:autoboot");
             mBootWl.acquire(10 * 60 * 1000L);
+            mConsoleLogger.startSession("Autoboot");
             report("=== autoboot: window open, starting ===\n");
             binding.btnRun.setEnabled(false);
             binding.btnKsu.setEnabled(false);
